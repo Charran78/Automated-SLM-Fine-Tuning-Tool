@@ -207,17 +207,19 @@ ollama list
 ### 6. Herramientas de compilación (solo ruta CPU)
 Si vas a usar el modo CPU, necesitarás git y cmake para compilar llama-quantize. El script los detecta y los compila automáticamente la primera vez.
 
+```text
 Git: git-scm.com
 
 CMake: cmake.org
-
-📁 Formato del dataset
+```
+## 📁 Formato del dataset
 El dataset debe ser un archivo JSONL (o cargable desde Hugging Face) con una columna messages en formato de conversación:
 
-json
+```json
 {"messages": [{"role": "system", "content": "Eres un asistente conciso."}, {"role": "user", "content": "¿Qué es LoRA?"}, {"role": "assistant", "content": "LoRA es una técnica de fine-tuning eficiente..."}]}
 {"messages": [{"role": "user", "content": "Explícame QLoRA."}, {"role": "assistant", "content": "QLoRA combina LoRA con cuantización 4-bit..."}]}
-Requisitos del dataset:
+```
+## Requisitados:
 
 Mínimo 10 ejemplos para que se realice el split de evaluación (por defecto 90/10).
 
@@ -225,7 +227,7 @@ Si tienes menos, el script entrenará sin conjunto de evaluación (y lo indicar�
 
 La calidad del dataset importa más que la cantidad: 500 ejemplos buenos > 5.000 ejemplos ruidosos.
 
-▶️ Uso
+## ▶️ Uso
 
 ### Interfaz gráfica
 
@@ -237,10 +239,10 @@ python app_ui3.py
 
 La interfaz local queda disponible en `http://localhost:8080`.
 
-### CLI
+## CLI
 
-Flujo completo
-python
+### Flujo completo
+```python
 from slm_automator import SLMFineTunerPipeline
 
 prompts_prueba = ["¿Qué es LoRA y para qué sirve?"]
@@ -248,43 +250,59 @@ prompts_prueba = ["¿Qué es LoRA y para qué sirve?"]
 pipeline = SLMFineTunerPipeline(model_name="unsloth/Qwen2.5-1.5B-Instruct")
 pipeline.load_model_and_tokenizer()
 pipeline.prepare_dataset("mi_dataset.jsonl", test_size=0.1)
+```
 
-# 1. Evaluación baseline (antes del FT)
+## 1. Evaluación baseline (antes del FT)
+```python
 pipeline.evaluate_model(test_prompts=prompts_prueba, stage_label="Baseline (Pre-FT)")
+```
 
-# 2. Entrenamiento
+## 2. Entrenamiento
+```python
 pipeline.train(epochs=3, batch_size=2, learning_rate=2e-4)
+```
 
-# 3. Evaluación post-FT (comparativa)
+## 3. Evaluación post-FT (comparativa)
+```python
 pipeline.evaluate_model(test_prompts=prompts_prueba, stage_label="Post-FT")
+```
 
-# 4. Exportación GGUF + Modelfile y registro en Ollama
+## 4. Exportación GGUF + Modelfile y registro en Ollama
+```python
 modelfile = pipeline.export_to_gguf(export_dir="./gguf_output", quant_type="q4_k_m")
 pipeline.register_in_ollama(modelfile, ollama_model_name="qwen2.5-ft")
+```
 Ejecutar el modelo final
-bash
+```bash
 ollama run qwen2.5-ft
-🔄 Pipeline paso a paso
-Paso	Método	Qué hace
-1	load_model_and_tokenizer()	Carga el modelo base con Unsloth (GPU) o Transformers+PEFT (CPU). Configura LoRA.
-2	prepare_dataset()	Carga el JSONL, aplica la plantilla de chat de Qwen2.5, valida eos_token y divide en train/eval.
-3	evaluate_model()	Calcula eval_loss en el conjunto de validación y genera respuestas cualitativas.
-4	train()	Ejecuta SFT con SFTTrainer. Ajusta automáticamente bf16/fp16.
-5	evaluate_model()	Repite la evaluación para comparar con el baseline.
-6	export_to_gguf()	Fusiona LoRA, cuantiza a GGUF y genera/corrige el Modelfile.
-7	register_in_ollama()	Ejecuta ollama create con el Modelfile generado.
-💻 Hardware recomendado
-Escenario	GPU	VRAM	RAM	Rendimiento esperado
-Ruta Unsloth (GPU)	RTX 3060 / 4050 / 4060	6–8 GB	8 GB	~5–10 min para 500 ejemplos × 3 épocas
-Ruta Unsloth (GPU alta)	RTX 4070 / 4080	12+ GB	16 GB	~2–4 min; puedes subir batch_size a 4 u 8
-Ruta CPU (fallback)	—	—	16 GB	~1–3 horas para 500 ejemplos × 3 épocas
-Nota: El script detecta automáticamente si hay GPU. Si no la hay, activa el modo CPU sin intervención manual.
+```
+### 🔄 Pipeline paso a paso
 
-🛠️ Solución de problemas
-❌ python no se encuentra / abre la Microsoft Store
+| Paso | Método | Qué hace |
+|---:|---|---|
+| 1 | `load_model_and_tokenizer()` | Carga el modelo base con Unsloth (GPU) o Transformers+PEFT (CPU). Configura LoRA. |
+| 2 | `prepare_dataset()` | Carga el JSONL, aplica la plantilla de chat de Qwen2.5, valida `eos_token` y divide en train/eval. |
+| 3 | `evaluate_model()` | Calcula `eval_loss` en el conjunto de validación y genera respuestas cualitativas. |
+| 4 | `train()` | Ejecuta SFT con `SFTTrainer`. Ajusta automáticamente `bf16`/`fp16`. |
+| 5 | `evaluate_model()` | Repite la evaluación para comparar con el baseline. |
+| 6 | `export_to_gguf()` | Fusiona LoRA, cuantiza a GGUF y genera/corrige el `Modelfile`. |
+| 7 | `register_in_ollama()` | Ejecuta `ollama create` con el `Modelfile` generado. |
+
+### 💻 Hardware recomendado
+
+| Escenario | GPU | VRAM | RAM | Rendimiento esperado |
+|---|---|---|---:|---|
+| Ruta Unsloth (GPU) | RTX 3060 / 4050 / 4060 | 6–8 GB | 8 GB | ~5–10 min para 500 ejemplos × 3 épocas |
+| Ruta Unsloth (GPU alta) | RTX 4070 / 4080 | 12+ GB | 16 GB | ~2–4 min; puedes subir `batch_size` a 4 u 8 |
+| Ruta CPU (fallback) | — | — | 16 GB | ~1–3 horas para 500 ejemplos × 3 épocas |
+
+> **Nota:** El script detecta automáticamente si hay GPU. Si no la hay, activa el modo CPU sin intervención manual.
+
+## 🛠️ Solución de problemas
+### ❌ python no se encuentra en el PATH
 Síntoma:
 
-text
+'''text
 No se encontró Python; ejecutar sin argumentos para instalar desde la Microsoft Store...
 Causa: Los alias de ejecución de Windows interceptan python y python3.
 
@@ -298,7 +316,7 @@ Reinicia la terminal.
 
 Alternativa rápida: usa py en lugar de python.
 
-❌ ModuleNotFoundError: No module named 'datasets'
+### ❌ ModuleNotFoundError: No module named 'datasets'
 Causa: El entorno virtual no tiene las dependencias instaladas.
 
 Solución:
@@ -316,7 +334,7 @@ Causa: Unsloth no está instalado (o no es compatible con tu plataforma).
 
 Solución: Si tienes GPU NVIDIA, instálalo con el comando específico de tu plataforma (ver Instalación). Si no tienes GPU, puedes ignorar este error: el script usará automáticamente el modo CPU.
 
-❌ UserWarning: Failed to initialize NumPy
+### ❌ UserWarning: Failed to initialize NumPy
 Causa: Falta numpy en el entorno.
 
 Solución:
@@ -328,21 +346,21 @@ Causa: Ollama no está instalado o no está en el PATH.
 ```
 Solución: Instala Ollama desde ollama.com y verifica con ollama list.
 
-❌ El Modelfile generado por Unsloth apunta al archivo equivocado
+### ❌ El Modelfile generado por Unsloth apunta al archivo equivocado
 Síntoma: Ollama carga el modelo en F16 (pesado) en lugar del cuantizado Q4_K_M.
 
 Causa: Bug conocido de Unsloth (issue #2604).
 
 Solución: El script ya incluye el parche que reescribe la línea FROM del Modelfile para que apunte al GGUF cuantizado correcto. Si ves este problema, asegúrate de estar usando la versión más reciente del script.
 
-❌ Error al compilar llama-quantize en la ruta CPU
+### ❌ Error al compilar llama-quantize en la ruta CPU
 Síntoma: subprocess.CalledProcessError durante cmake --build.
 
 Causa: Falta CMake o un compilador C++.
 
 Solución: Instala CMake y un compilador (MSVC en Windows, build-essential en Linux).
 
-❌ Entrenamiento extremadamente lento en CPU
+### ❌ Entrenamiento extremadamente lento en CPU
 Causa: La ruta CPU no usa cuantización y el modelo se carga en FP32.
 
 Solución: Es esperado. Para acelerar:
@@ -355,7 +373,9 @@ Usa un dataset más pequeño.
 
 Si tienes GPU, instala Unsloth.
 
-📂 Estructura del proyecto
+---
+
+### 📂 Estructura del proyecto
 ```text
 Autonated SLM Fine-Tuning Tool/
 ├── slm_automator.py          # Script principal (clase SLMFineTunerPipeline)
@@ -393,11 +413,11 @@ Clasificación y extracción de información en dominios acotados.
 
 Prototipado rápido de modelos especializados.
 
-### Investigación educativa.
+### 📖 Investigación educativa.
 
 No la uses para generar contenido dañino, eludir sistemas de seguridad o crear modelos sin auditoría en entornos de producción críticos.
 
-📜 Licencia
+### 📜 Licencia
 Apache 2.0. Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
 
 ---
