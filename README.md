@@ -1,4 +1,11 @@
+
+<p align="center">
+  <img src="images/LOGO.png" alt="Automated SLM Fine-Tuning Tool" width="240">
+</p>
+
 # Automated SLM Fine-Tuning Tool
+
+![Carátula](images/UI_1.png)
 
 Pipeline automatizado para hacer *fine-tuning* (SFT + LoRA/QLoRA) de modelos de lenguaje pequeños (SLM) como `Qwen2.5-1.5B-Instruct`, exportar el resultado a **GGUF** cuantizado y registrarlo automáticamente en **Ollama**.
 
@@ -165,34 +172,39 @@ source venv/bin/activate
 
 Deberías ver (venv) al principio del prompt.
 
-3. Dependencias base
+```
+### 3. Dependencias base
 Con el entorno virtual activado:
 
-bash
+```bash
 pip install -r requirements.txt
 Si aún no tienes el requirements.txt, puedes instalarlas directamente:
-
-bash
+```
+```bash
 pip install nicegui torch transformers datasets "trl>=1.18.0" peft accelerate numpy
-4. Unsloth (opcional, solo GPU NVIDIA)
+```
+### 4. Unsloth (opcional, solo GPU NVIDIA)
+
 Unsloth no está incluido en requirements.txt porque su instalación depende de la plataforma y del backend de PyTorch. Instálalo por separado:
 
 Windows:
 
-bash
+```bash
 pip install "unsloth[windows] @ git+https://github.com/unslothai/unsloth.git"
+```
 Linux:
 
-bash
+```bash
 pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
 El script detecta automáticamente si Unsloth está disponible y si hay GPU. Si no lo encuentra, usa la ruta CPU con transformers + peft.
-
-5. Ollama
+```
+### 5. Ollama
 Descarga e instala Ollama desde ollama.com. Verifica que el servicio esté activo:
 
-bash
+```bash
 ollama list
-6. Herramientas de compilación (solo ruta CPU)
+```
+### 6. Herramientas de compilación (solo ruta CPU)
 Si vas a usar el modo CPU, necesitarás git y cmake para compilar llama-quantize. El script los detecta y los compila automáticamente la primera vez.
 
 Git: git-scm.com
@@ -291,13 +303,15 @@ Causa: El entorno virtual no tiene las dependencias instaladas.
 
 Solución:
 
-bash
+```bash
 pip install -r requirements.txt
 O manualmente:
-
-bash
+```
+```bash
 pip install nicegui torch transformers datasets "trl>=1.18.0" peft accelerate numpy
-❌ ModuleNotFoundError: No module named 'unsloth'
+❌ ModuleNotFoundError: No module named 
+'unsloth'
+```
 Causa: Unsloth no está instalado (o no es compatible con tu plataforma).
 
 Solución: Si tienes GPU NVIDIA, instálalo con el comando específico de tu plataforma (ver Instalación). Si no tienes GPU, puedes ignorar este error: el script usará automáticamente el modo CPU.
@@ -307,11 +321,11 @@ Causa: Falta numpy en el entorno.
 
 Solución:
 
-bash
+```bash
 pip install numpy
 ❌ ollama: command not found
 Causa: Ollama no está instalado o no está en el PATH.
-
+```
 Solución: Instala Ollama desde ollama.com y verifica con ollama list.
 
 ❌ El Modelfile generado por Unsloth apunta al archivo equivocado
@@ -342,7 +356,7 @@ Usa un dataset más pequeño.
 Si tienes GPU, instala Unsloth.
 
 📂 Estructura del proyecto
-text
+```text
 Autonated SLM Fine-Tuning Tool/
 ├── slm_automator.py          # Script principal (clase SLMFineTunerPipeline)
 ├── requirements.txt          # Dependencias base
@@ -350,8 +364,9 @@ Autonated SLM Fine-Tuning Tool/
 ├── mi_dataset.jsonl          # Tu dataset de entrenamiento
 ├── output_model/             # Salida del entrenamiento (checkpoints)
 └── gguf_output/              # GGUF cuantizado + Modelfile
+```
 📄 requirements.txt recomendado
-txt
+```txt
 nicegui>=2.0
 torch>=2.0
 transformers>=4.40
@@ -360,13 +375,16 @@ trl>=1.18.0
 peft>=0.10
 accelerate>=0.28
 numpy>=1.24
+
+```
 Unsloth no se incluye aquí porque su instalación depende de la plataforma. Consulta la sección Unsloth.
 
 Para máxima reproducibilidad de tu entorno exacto:
 
-bash
+```bash
 pip freeze > requirements.lock.txt
-⚖️ Uso responsable
+```
+### ⚖️ Uso responsable
 Esta herramienta está pensada para:
 
 Fine-tuning de asistentes internos con datos propios.
@@ -375,11 +393,11 @@ Clasificación y extracción de información en dominios acotados.
 
 Prototipado rápido de modelos especializados.
 
-Investigación educativa.
+### Investigación educativa.
 
 No la uses para generar contenido dañino, eludir sistemas de seguridad o crear modelos sin auditoría en entornos de producción críticos.
 
 📜 Licencia
-MIT (o la que prefieras). Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
+Apache 2.0. Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
 
 ---

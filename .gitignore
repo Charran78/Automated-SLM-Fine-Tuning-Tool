@@ -12,3 +12,5 @@ output_model/
 !.env.example
 Dataset/*.*
 __pycache__/
+demo.jsonl
+r.txt
