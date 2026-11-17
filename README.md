@@ -319,6 +319,7 @@ ollama run qwen2.5-ft
 > **Nota:** El script detecta automáticamente si hay GPU. Si no la hay, activa el modo CPU sin intervención manual.
 
 ## 🛠️ Solución de problemas
+---
 ### ❌ python no se encuentra en el PATH
 Síntoma:
 
@@ -339,6 +340,7 @@ Reinicia la terminal.
 ### Alternativa rápida: 
 
 usa py en lugar de python.
+---
 
 ### ❌ ModuleNotFoundError: No module named 'datasets'
 Causa: El entorno virtual no tiene las dependencias instaladas.
@@ -357,6 +359,7 @@ pip install nicegui torch transformers datasets "trl>=1.18.0" peft accelerate nu
 Causa: Unsloth no está instalado (o no es compatible con tu plataforma).
 
 Solución: Si tienes GPU NVIDIA, instálalo con el comando específico de tu plataforma (ver Instalación). Si no tienes GPU, puedes ignorar este error: el script usará automáticamente el modo CPU.
+---
 
 ### ❌ UserWarning: Failed to initialize NumPy
 Causa: Falta numpy en el entorno.
@@ -369,6 +372,7 @@ pip install numpy
 Causa: Ollama no está instalado o no está en el PATH.
 ```
 Solución: Instala Ollama desde ollama.com y verifica con ollama list.
+---
 
 ### ❌ El Modelfile generado por Unsloth apunta al archivo equivocado
 Síntoma: Ollama carga el modelo en F16 (pesado) en lugar del cuantizado Q4_K_M.
@@ -376,6 +380,7 @@ Síntoma: Ollama carga el modelo en F16 (pesado) en lugar del cuantizado Q4_K_M.
 Causa: Bug conocido de Unsloth (issue #2604).
 
 Solución: El script ya incluye el parche que reescribe la línea FROM del Modelfile para que apunte al GGUF cuantizado correcto. Si ves este problema, asegúrate de estar usando la versión más reciente del script.
+---
 
 ### ❌ Error al compilar llama-quantize en la ruta CPU
 Síntoma: subprocess.CalledProcessError durante cmake --build.
@@ -383,6 +388,7 @@ Síntoma: subprocess.CalledProcessError durante cmake --build.
 Causa: Falta CMake o un compilador C++.
 
 Solución: Instala CMake y un compilador (MSVC en Windows, build-essential en Linux).
+---
 
 ### ❌ Entrenamiento extremadamente lento en CPU
 Causa: La ruta CPU no usa cuantización y el modelo se carga en FP32.
@@ -428,7 +434,9 @@ Para máxima reproducibilidad de tu entorno exacto:
 ```bash
 pip freeze > requirements.lock.txt
 ```
+---
 ### ⚖️ Uso responsable
+
 Esta herramienta está pensada para:
 
 Fine-tuning de asistentes internos con datos propios.
@@ -436,12 +444,15 @@ Fine-tuning de asistentes internos con datos propios.
 Clasificación y extracción de información en dominios acotados.
 
 Prototipado rápido de modelos especializados.
+---
 
 ### 📖 Investigación educativa.
 
 No la uses para generar contenido dañino, eludir sistemas de seguridad o crear modelos sin auditoría en entornos de producción críticos.
+---
 
 ### 📜 Licencia
+
 Apache 2.0. Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
 
 ---
