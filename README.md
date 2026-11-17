@@ -3,9 +3,10 @@
   <img src="images/LOGO.png" alt="Automated SLM Fine-Tuning Tool" width="240">
 </p>
 
+<h1 align="center">🧠 Automated SLM Fine-Tuning Tool</h1>
 <p align="center">
-  <h1>🧠 Automated SLM Fine-Tuning Tool</h1>
-  <p><em>Pipeline end-to-end para fine-tuning de SLMs: SFT + LoRA/QLoRA → GGUF → Ollama</em></p>
+  <b>Fine-tune · Evaluate · Quantize · Deploy</b><br/>
+  <sub>Pipeline end-to-end para fine-tuning de SLMs: SFT + LoRA/QLoRA → GGUF → Ollama</sub>
 </p>
 
 <!-- Identidad -->
