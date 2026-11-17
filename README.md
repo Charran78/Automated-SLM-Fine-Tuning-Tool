@@ -3,7 +3,26 @@
   <img src="images/LOGO.png" alt="Automated SLM Fine-Tuning Tool" width="240">
 </p>
 
-# Automated SLM Fine-Tuning Tool
+<p align="center">
+  <h1>🧠 Automated SLM Fine-Tuning Tool</h1>
+  <p><em>Pipeline end-to-end para fine-tuning de SLMs: SFT + LoRA/QLoRA → GGUF → Ollama</em></p>
+</p>
+---
+<!-- Identidad -->
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=for-the-badge&logo=apache&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Status](https://img.shields.io/badge/status-prototype%20%E2%86%92%20stable-orange?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.1.0--alpha-red?style=for-the-badge)
+
+<!-- Stack -->
+![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white)
+![Transformers](https://img.shields.io/badge/%F0%9F%A4%97%20Transformers-FFD21E?style=for-the-badge)
+![TRL](https://img.shields.io/badge/TRL-%E2%89%A51.18-7B2FBE?style=for-the-badge)
+![PEFT](https://img.shields.io/badge/PEFT-LoRA%2FQLoRA-FF6F61?style=for-the-badge)
+![Unsloth](https://img.shields.io/badge/Unsloth-GPU%20accelerated-00A67E?style=for-the-badge)
+![Ollama](https://img.shields.io/badge/Ollama-ready-black?style=for-the-badge&logo=ollama&logoColor=white)
+![GGUF](https://img.shields.io/badge/export-GGUF-4B8BBE?style=for-the-badge)
+---
 
 ![Carátula](images/UI_1.png)
 
