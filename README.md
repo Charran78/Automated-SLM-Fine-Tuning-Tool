@@ -325,16 +325,20 @@ Síntoma:
 '''text
 No se encontró Python; ejecutar sin argumentos para instalar desde la Microsoft Store...
 Causa: Los alias de ejecución de Windows interceptan python y python3.
+'''
 
 Solución:
 
+'''text
 Configuración → Aplicaciones → Configuración avanzada de aplicaciones → Alias de ejecución de aplicaciones.
 
 Desactiva python.exe y python3.exe.
 
 Reinicia la terminal.
+'''
+### Alternativa rápida: 
 
-Alternativa rápida: usa py en lugar de python.
+usa py en lugar de python.
 
 ### ❌ ModuleNotFoundError: No module named 'datasets'
 Causa: El entorno virtual no tiene las dependencias instaladas.
