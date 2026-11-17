@@ -7,7 +7,7 @@
   <h1>🧠 Automated SLM Fine-Tuning Tool</h1>
   <p><em>Pipeline end-to-end para fine-tuning de SLMs: SFT + LoRA/QLoRA → GGUF → Ollama</em></p>
 </p>
----
+
 <!-- Identidad -->
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=for-the-badge&logo=apache&logoColor=white)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
