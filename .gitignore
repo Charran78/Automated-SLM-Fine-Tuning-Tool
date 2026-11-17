@@ -1,0 +1,14 @@
+NO_LEER/
+Datasets/
+venv/
+__pycache__/
+.ruff_cache/
+.screenshots/
+gguf_output/
+output_model/
+*.py[cod]
+.env
+.env.*
+!.env.example
+Dataset/*.*
+__pycache__/
