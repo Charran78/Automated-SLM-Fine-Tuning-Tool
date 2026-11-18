@@ -318,16 +318,18 @@ ollama run qwen2.5-ft
 
 > **Nota:** El script detecta automáticamente si hay GPU. Si no la hay, activa el modo CPU sin intervención manual.
 
+---
+
 ## 🛠️ Solución de problemas
 ### ❌ python no se encuentra en el PATH
-Síntoma:
+#### Síntoma:
 
 ```text
 No se encontró Python; ejecutar sin argumentos para instalar desde la Microsoft Store...
 Causa: Los alias de ejecución de Windows interceptan python y python3.
 ```
 
-Solución:
+#### Solución:
 
 ```text
 Configuración → Aplicaciones → Configuración avanzada de aplicaciones → Alias de ejecución de aplicaciones.
@@ -343,7 +345,7 @@ usa py en lugar de python.
 ### ❌ ModuleNotFoundError: No module named 'datasets'
 Causa: El entorno virtual no tiene las dependencias instaladas.
 
-Solución:
+#### Solución:
 
 ```bash
 pip install -r requirements.txt
@@ -354,42 +356,45 @@ pip install nicegui torch transformers datasets "trl>=1.18.0" peft accelerate nu
 ❌ ModuleNotFoundError: No module named 
 'unsloth'
 ```
-Causa: Unsloth no está instalado (o no es compatible con tu plataforma).
+#### Causa: Unsloth no está instalado (o no es compatible con tu plataforma).
 
-Solución: Si tienes GPU NVIDIA, instálalo con el comando específico de tu plataforma (ver Instalación). Si no tienes GPU, puedes ignorar este error: el script usará automáticamente el modo CPU.
+#### Solución: Si tienes GPU NVIDIA, instálalo con el comando específico de tu plataforma (ver Instalación). Si no tienes GPU, puedes ignorar este error: el script usará automáticamente el modo CPU.
 
 ### ❌ UserWarning: Failed to initialize NumPy
 Causa: Falta numpy en el entorno.
 
-Solución:
+#### Solución:
 
 ```bash
 pip install numpy
 ❌ ollama: command not found
-Causa: Ollama no está instalado o no está en el PATH.
 ```
-Solución: Instala Ollama desde ollama.com y verifica con ollama list.
+#### Causa: Ollama no está instalado o no está en el PATH.
+
+#### Solución: Instala Ollama desde ollama.com y verifica con ollama list.
 ---
 
 ### ❌ El Modelfile generado por Unsloth apunta al archivo equivocado
-Síntoma: Ollama carga el modelo en F16 (pesado) en lugar del cuantizado Q4_K_M.
+#### Síntoma: Ollama carga el modelo en F16 (pesado) en lugar del cuantizado Q4_K_M.
 
-Causa: Bug conocido de Unsloth (issue #2604).
+#### Causa: Bug conocido de Unsloth (issue #2604).
 
-Solución: El script ya incluye el parche que reescribe la línea FROM del Modelfile para que apunte al GGUF cuantizado correcto. Si ves este problema, asegúrate de estar usando la versión más reciente del script.
-
+#### Solución: 
+```text
+El script ya incluye el parche que reescribe la línea FROM del Modelfile para que apunte al GGUF cuantizado correcto. Si ves este problema, asegúrate de estar usando la versión más reciente del script.
+```
 ### ❌ Error al compilar llama-quantize en la ruta CPU
-Síntoma: subprocess.CalledProcessError durante cmake --build.
+#### Síntoma: subprocess.CalledProcessError durante cmake --build.
 
-Causa: Falta CMake o un compilador C++.
+#### Causa: Falta CMake o un compilador C++.
 
-Solución: Instala CMake y un compilador (MSVC en Windows, build-essential en Linux).
+#### Solución: Instala CMake y un compilador (MSVC en Windows, build-essential en Linux).
 
 ### ❌ Entrenamiento extremadamente lento en CPU
-Causa: La ruta CPU no usa cuantización y el modelo se carga en FP32.
+#### Causa: La ruta CPU no usa cuantización y el modelo se carga en FP32.
 
-Solución: Es esperado. Para acelerar:
-
+#### Solución: Es esperado. Para acelerar:
+```text
 Reduce epochs a 1–2.
 
 Reduce max_seq_length.
@@ -397,7 +402,7 @@ Reduce max_seq_length.
 Usa un dataset más pequeño.
 
 Si tienes GPU, instala Unsloth.
-
+```
 
 ### 📂 Estructura del proyecto
 ```text
@@ -446,7 +451,12 @@ No la uses para generar contenido dañino, eludir sistemas de seguridad o crear 
 ---
 
 ### 📜 Licencia
-
-Apache 2.0. Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
-
+#### Licencia de código:
+```text
+Apache 2.0. 
+```
+#### Licencia de pesos:
+```text
+Los pesos del modelo base están sujetos a sus respectivas licencias de origen (Qwen2.5: Apache 2.0; Unsloth: Apache 2.0).
+```
 ---
