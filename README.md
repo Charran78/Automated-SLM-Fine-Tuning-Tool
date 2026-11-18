@@ -435,7 +435,8 @@ pip freeze > requirements.lock.txt
 ```
 ---
 ### ⚖️ Uso responsable
-
+#### Uso responsable:
+```text
 Esta herramienta está pensada para:
 
 Fine-tuning de asistentes internos con datos propios.
@@ -443,11 +444,15 @@ Fine-tuning de asistentes internos con datos propios.
 Clasificación y extracción de información en dominios acotados.
 
 Prototipado rápido de modelos especializados.
+```
+
 ---
 
 ### 📖 Investigación educativa.
 
-No la uses para generar contenido dañino, eludir sistemas de seguridad o crear modelos sin auditoría en entornos de producción críticos.
+```text
+No eludir sistemas de seguridad o crear modelos sin auditoría en entornos de producción críticos.
+```
 ---
 
 ### 📜 Licencia
