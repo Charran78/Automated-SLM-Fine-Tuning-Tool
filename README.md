@@ -239,7 +239,7 @@ El dataset debe ser un archivo JSONL (o cargable desde Hugging Face) con una col
 {"messages": [{"role": "system", "content": "Eres un asistente conciso."}, {"role": "user", "content": "¿Qué es LoRA?"}, {"role": "assistant", "content": "LoRA es una técnica de fine-tuning eficiente..."}]}
 {"messages": [{"role": "user", "content": "Explícame QLoRA."}, {"role": "assistant", "content": "QLoRA combina LoRA con cuantización 4-bit..."}]}
 ```
-## Requisitados:
+## Requisitos:
 
 Mínimo 10 ejemplos para que se realice el split de evaluación (por defecto 90/10).
 
