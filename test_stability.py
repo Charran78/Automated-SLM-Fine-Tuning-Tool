@@ -1,4 +1,7 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -7,6 +10,26 @@ from slm_automator import SLMFineTunerPipeline
 
 
 class StabilityTests(unittest.TestCase):
+    def test_quantizer_resolves_visual_studio_release_output(self):
+        with tempfile.TemporaryDirectory() as build_dir:
+            executable_name = (
+                "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+            )
+            executable = Path(build_dir) / "bin" / "Release" / executable_name
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+
+            self.assertEqual(
+                SLMFineTunerPipeline._find_llama_quantize_binary(build_dir),
+                str(executable),
+            )
+
+    def test_quantizer_resolution_returns_none_when_binary_is_missing(self):
+        with tempfile.TemporaryDirectory() as build_dir:
+            self.assertIsNone(
+                SLMFineTunerPipeline._find_llama_quantize_binary(build_dir)
+            )
+
     def test_each_job_has_an_independent_progress_queue_and_stop_event(self):
         first = app_ui3.JobContext()
         second = app_ui3.JobContext()

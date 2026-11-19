@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 .screenshots/
 gguf_output/
+llama.cpp/
 output_model/
 *.py[cod]
 .env

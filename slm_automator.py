@@ -37,6 +37,19 @@ class SLMFineTunerPipeline:
             raise EnvironmentError(f"[ERROR CRÍTICO] La dependencia '{cmd_name}' no se encontró en el PATH del sistema.")
 
     @staticmethod
+    def _find_llama_quantize_binary(build_dir: str) -> str | None:
+        """Resuelve la ruta generada por CMake single o multi-config."""
+        executable = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        candidates = (
+            os.path.join(build_dir, "bin", executable),
+            os.path.join(build_dir, "bin", "Release", executable),
+            os.path.join(build_dir, "bin", "RelWithDebInfo", executable),
+            os.path.join(build_dir, "bin", "MinSizeRel", executable),
+            os.path.join(build_dir, "bin", "Debug", executable),
+        )
+        return next((path for path in candidates if os.path.isfile(path)), None)
+
+    @staticmethod
     def _cpu_fallback_model_name(model_name):
         """Resuelve modelos Unsloth conocidos a su repositorio base de Transformers."""
         model_name = re.sub(r"-bnb-4bit$", "", model_name)
@@ -335,9 +348,9 @@ class SLMFineTunerPipeline:
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(f"[ERROR] Falló la conversión HF -> GGUF (F16): {e}")
 
-            quantize_bin = os.path.join(llama_dir, "build", "bin", "llama-quantize" + (".exe" if os.name == "nt" else ""))
-            if not os.path.exists(quantize_bin):
-                build_dir = os.path.join(llama_dir, "build")
+            build_dir = os.path.join(llama_dir, "build")
+            quantize_bin = self._find_llama_quantize_binary(build_dir)
+            if quantize_bin is None:
                 try:
                     subprocess.run(["cmake", "-S", llama_dir, "-B", build_dir], check=True)
                     subprocess.run(
@@ -346,6 +359,11 @@ class SLMFineTunerPipeline:
                     )
                 except subprocess.CalledProcessError as e:
                     raise RuntimeError(f"[ERROR] Falló la compilación de llama-quantize mediante CMake: {e}")
+                quantize_bin = self._find_llama_quantize_binary(build_dir)
+                if quantize_bin is None:
+                    raise FileNotFoundError(
+                        f"No se encontró llama-quantize en las salidas de CMake: {build_dir}"
+                    )
 
             try:
                 subprocess.run([quantize_bin, f16_gguf_path, final_gguf_path, quant_type.upper()], check=True)
