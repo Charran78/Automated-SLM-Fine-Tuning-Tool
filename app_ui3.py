@@ -6,13 +6,29 @@ import queue
 import threading
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from nicegui import background_tasks, ui
 from transformers import TrainerCallback
+from kaggle_runner import KaggleDataset, KaggleError, KaggleRunner
+from remote_adapter import (
+    RemoteArtifactMetadata,
+    convert_remote_artifact,
+    inspect_remote_artifact,
+    resolve_current_revision,
+)
 from slm_automator import SLMFineTunerPipeline
 
 # --- Coordinación global de trabajos y estado aislado por ejecución ---
 _active_job_lock = threading.Lock()
-_TERMINAL_EVENTS = {"loaded", "done", "stopped", "evaluated", "exported", "error"}
+_TERMINAL_EVENTS = {
+    "loaded",
+    "done",
+    "stopped",
+    "evaluated",
+    "exported",
+    "remote_imported",
+    "error",
+}
 
 
 @dataclass
@@ -76,6 +92,29 @@ def list_datasets() -> list[str]:
         for f in os.listdir(DATASETS_DIR)
         if f.endswith(".jsonl") or f.endswith(".json")
     )
+
+
+def _latest_remote_artifact_path() -> str:
+    """Sugiere el ZIP más reciente; el usuario puede elegir otra ruta."""
+    artifacts_dir = Path.home() / "kaggle_output"
+    try:
+        candidates = list(artifacts_dir.glob("*/model_artifact.zip"))
+        return str(max(candidates, key=lambda path: path.stat().st_mtime)) if candidates else ""
+    except OSError:
+        return ""
+
+
+def _new_sibling_output_path(archive_path: str) -> str:
+    """Propone una carpeta de salida hermana que todavía no exista."""
+    archive = Path(archive_path).expanduser()
+    base = archive.with_name(f"{archive.stem}_gguf")
+    candidate = base
+    suffix = 2
+    while candidate.exists() or candidate.is_symlink():
+        candidate = base.with_name(f"{base.name}_{suffix}")
+        suffix += 1
+    return str(candidate)
+
 
 def get_pipeline() -> SLMFineTunerPipeline:
     """Devuelve el único pipeline, compartido por la app y protegido por el lock global."""
@@ -169,6 +208,47 @@ def _export_worker(context: JobContext, pipeline: SLMFineTunerPipeline, quant: s
         pipeline.register_in_ollama(modelfile, ollama_model_name=ollama_name)
     context.send({"type": "exported", "text": buf.getvalue()})
 
+
+def _remote_import_worker(
+    context: JobContext,
+    archive_path: str,
+    output_dir: str,
+    model_revision: str | None,
+    acknowledge_unrecorded_revision: bool,
+    quant_type: str,
+    ollama_model_name: str,
+    register_ollama: bool,
+) -> None:
+    """Importa el ZIP en un pipeline aislado del estado de entrenamiento."""
+    context.send({"type": "remote_started"})
+    try:
+        result = convert_remote_artifact(
+            archive_path,
+            output_dir,
+            model_revision,
+            acknowledge_unrecorded_revision,
+            quant_type,
+            ollama_model_name,
+            register_ollama,
+        )
+    except Exception as error:  # noqa: BLE001
+        destination = Path(output_dir)
+        generated_files = sorted(
+            str(path)
+            for pattern in ("*.gguf", "Modelfile")
+            for path in destination.rglob(pattern)
+        ) if destination.is_dir() else []
+        details = f"Error durante la importación: {error}"
+        if generated_files:
+            details += "\nArchivos generados (salida parcial conservada):\n"
+            details += "\n".join(generated_files)
+        elif destination.exists():
+            details += f"\nSalida parcial conservada en: {destination}"
+        context.send({"type": "error", "msg": details})
+        return
+    context.send({"type": "remote_imported", "result": result})
+
+
 # --- UI ---
 @ui.page("/")
 async def main():
@@ -177,11 +257,15 @@ async def main():
     with ui.header().classes("bg-primary items-center"):
         ui.label("SLM Fine-Tuning Tool").classes("text-h5")
 
+    remote_metadata: RemoteArtifactMetadata | None = None
+    remote_inspected_path = ""
+
     with ui.tabs().classes("w-full") as tabs:
         tab_config = ui.tab("Configuración")
         tab_train = ui.tab("Entrenamiento")
         tab_eval = ui.tab("Evaluación")
         tab_export = ui.tab("Exportación")
+        tab_kaggle = ui.tab("Kaggle (opcional)")
 
     with ui.tab_panels(tabs, value=tab_config).classes("w-full"):
         # ---------- Configuración ----------
@@ -277,6 +361,140 @@ async def main():
             export_log = ui.log(max_lines=100).classes(
                 "w-full h-48 bg-gray-900 text-green-400 font-mono text-xs"
             )
+            ui.separator()
+            ui.label("Importar adaptador remoto desde ZIP").classes("text-subtitle1")
+            suggested_archive = _latest_remote_artifact_path()
+            if suggested_archive:
+                ui.label(
+                    f"ZIP más reciente sugerido: {suggested_archive}"
+                ).classes("text-caption text-grey-7")
+            remote_archive_path = ui.input(
+                "Ruta local al ZIP",
+                value=suggested_archive,
+                placeholder="Puedes indicar cualquier ZIP local compatible",
+            ).classes("w-full")
+            remote_output_dir = ui.input(
+                "Carpeta de salida (nueva, hermana del ZIP)",
+                value=_new_sibling_output_path(suggested_archive)
+                if suggested_archive
+                else "",
+            ).classes("w-full")
+            with ui.row().classes("items-center"):
+                btn_inspect_remote = ui.button(
+                    "Inspeccionar ZIP", icon="fact_check"
+                )
+                btn_resolve_revision = ui.button(
+                    "Resolver HEAD actual", icon="sync"
+                )
+            remote_inspect_status = ui.label("").classes("text-caption")
+            remote_metadata_label = ui.label("").classes("text-body2")
+            remote_revision_warning = ui.label("").classes("text-orange-9")
+            remote_unrecorded_warning = ui.label(
+                "ATENCIÓN: el manifiesto no registra el SHA de entrenamiento. "
+                "Debes resolver o indicar explícitamente un SHA de 40 caracteres "
+                "y aceptar esta revisión no registrada antes de importar."
+            ).classes("text-orange-9")
+            remote_unrecorded_warning.set_visibility(False)
+            remote_revision_input = ui.input(
+                "SHA de revisión del modelo (40 caracteres hexadecimales)"
+            ).classes("w-full")
+            remote_acknowledge_revision = ui.checkbox(
+                "Acepto importar usando una revisión que no está registrada "
+                "en el manifiesto."
+            )
+            remote_acknowledge_revision.set_visibility(False)
+            register_remote_ollama = ui.checkbox(
+                "Registrar el modelo importado en Ollama",
+                value=True,
+            )
+            btn_import_remote = ui.button(
+                "Importar ZIP a GGUF", icon="archive"
+            )
+            remote_import_log = ui.log(max_lines=100).classes(
+                "w-full h-48 bg-gray-900 text-green-400 font-mono text-xs"
+            )
+
+            def on_remote_archive_changed():
+                nonlocal remote_metadata, remote_inspected_path
+                remote_metadata = None
+                remote_inspected_path = ""
+                remote_metadata_label.text = ""
+                remote_inspect_status.text = ""
+                remote_revision_warning.text = ""
+                remote_unrecorded_warning.set_visibility(False)
+                remote_acknowledge_revision.set_visibility(False)
+                remote_revision_input.value = ""
+                archive_value = (remote_archive_path.value or "").strip()
+                remote_output_dir.value = (
+                    _new_sibling_output_path(archive_value) if archive_value else ""
+                )
+
+            remote_archive_path.on_value_change(on_remote_archive_changed)
+
+        # ---------- Entrenamiento remoto opcional ----------
+        with ui.tab_panel(tab_kaggle):
+            ui.label("Entrenamiento remoto con Kaggle").classes("text-subtitle1")
+            ui.label(
+                "Requiere Kaggle CLI instalado y autenticado localmente. "
+                "El flujo local existente no depende de Kaggle."
+            ).classes("text-caption text-grey-7")
+            kaggle_kernel_id = ui.input(
+                "ID privado del notebook (usuario/slug)",
+                placeholder="tu-usuario/slm-finetuning",
+            ).classes("w-full")
+            kaggle_model_revision = ui.input(
+                "SHA de revisión del modelo (opcional, 40 caracteres hexadecimales)"
+            ).classes("w-full")
+            kaggle_dataset_kind = ui.select(
+                {
+                    "kaggle": "Referencia de dataset de Kaggle",
+                    "huggingface": "Dataset público de Hugging Face",
+                    "local": "Archivo local (subir como dataset privado)",
+                },
+                value="kaggle",
+                label="Origen del dataset",
+            ).classes("w-full")
+            kaggle_dataset_ref = ui.input(
+                "Referencia Kaggle (usuario/slug)"
+            ).classes("w-full")
+            kaggle_hf_dataset = ui.input(
+                "ID público de dataset Hugging Face"
+            ).classes("w-full")
+            kaggle_hf_revision = ui.input(
+                "SHA de revisión del dataset (40 caracteres hexadecimales)"
+            ).classes("w-full")
+            kaggle_local_dataset = ui.input(
+                "Ruta al archivo JSON/JSONL local",
+                value=(dataset_manual.value or dataset_select.value or ""),
+            ).classes("w-full")
+            kaggle_upload_consent = ui.checkbox(
+                "Autorizo subir este archivo a Kaggle como dataset privado."
+            )
+            ui.label(
+                "El kernel se crea privado. Hugging Face remoto requiere internet habilitado "
+                "en Kaggle; la disponibilidad de esa opción por API depende de Kaggle."
+            ).classes("text-caption text-orange-9")
+            kaggle_submit_button = ui.button(
+                "Enviar entrenamiento a Kaggle", icon="cloud_upload"
+            )
+            kaggle_status_button = ui.button("Consultar estado", icon="sync")
+            kaggle_download_button = ui.button(
+                "Descargar artefactos", icon="download"
+            )
+            kaggle_result = ui.textarea("Estado y resultado").classes(
+                "w-full h-48"
+            ).props("readonly")
+
+            def update_kaggle_dataset_fields():
+                kind = kaggle_dataset_kind.value
+                kaggle_dataset_ref.set_visibility(kind == "kaggle")
+                kaggle_hf_dataset.set_visibility(kind == "huggingface")
+                kaggle_hf_revision.set_visibility(kind == "huggingface")
+                kaggle_local_dataset.set_visibility(kind == "local")
+                kaggle_upload_consent.set_visibility(kind == "local")
+
+            update_kaggle_dataset_fields()
+            kaggle_dataset_kind.on_value_change(update_kaggle_dataset_fields)
 
     # ---------- Callbacks ----------
     def resolve_model() -> str:
@@ -437,6 +655,172 @@ async def main():
         finally:
             btn_eval.enable()
 
+    async def on_inspect_remote():
+        nonlocal remote_metadata, remote_inspected_path
+        archive_value = (remote_archive_path.value or "").strip()
+        if not archive_value:
+            ui.notify("Indica la ruta local del ZIP", type="warning")
+            return
+
+        archive_path = Path(archive_value).expanduser()
+        btn_inspect_remote.disable()
+        remote_inspect_status.text = "Inspeccionando ZIP…"
+        remote_metadata_label.text = ""
+        remote_revision_warning.text = ""
+        remote_unrecorded_warning.set_visibility(False)
+        remote_acknowledge_revision.set_visibility(False)
+        try:
+            metadata = await asyncio.to_thread(inspect_remote_artifact, archive_path)
+        except Exception as error:  # noqa: BLE001
+            remote_metadata = None
+            remote_inspected_path = ""
+            remote_inspect_status.text = f"No se pudo inspeccionar el ZIP: {error}"
+            ui.notify("No se pudo inspeccionar el ZIP", type="negative")
+        else:
+            remote_metadata = metadata
+            remote_inspected_path = str(archive_path.resolve())
+            recorded_revision = metadata.recorded_revision or "NO REGISTRADA"
+            adapter_revision = metadata.adapter_revision or "no indicada"
+            remote_metadata_label.text = (
+                f"Modelo: {metadata.model_id} | "
+                f"SHA de entrenamiento en manifiesto: {recorded_revision} | "
+                f"Revisión del adaptador: {adapter_revision} | "
+                f"SHA-256 del ZIP: {metadata.archive_sha256}"
+            )
+            remote_inspect_status.text = "ZIP válido e inspeccionado."
+            remote_revision_input.value = metadata.recorded_revision or ""
+            is_unrecorded = metadata.recorded_revision is None
+            remote_unrecorded_warning.set_visibility(is_unrecorded)
+            remote_acknowledge_revision.set_visibility(is_unrecorded)
+            remote_acknowledge_revision.value = False
+            ui.notify("ZIP inspeccionado correctamente", type="positive")
+        finally:
+            btn_inspect_remote.enable()
+
+    async def on_resolve_remote_revision():
+        if remote_metadata is None:
+            ui.notify("Inspecciona primero el ZIP", type="warning")
+            return
+        btn_resolve_revision.disable()
+        remote_revision_warning.text = "Consultando la revisión HEAD en Hugging Face…"
+        remote_revision_warning.set_visibility(True)
+        try:
+            revision = await asyncio.to_thread(
+                resolve_current_revision, remote_metadata.model_id
+            )
+        except Exception as error:  # noqa: BLE001
+            remote_revision_warning.text = f"No se pudo resolver HEAD: {error}"
+            ui.notify("No se pudo resolver la revisión actual", type="negative")
+        else:
+            remote_revision_input.value = revision
+            recorded_revision = remote_metadata.recorded_revision
+            if recorded_revision and revision != recorded_revision:
+                remote_revision_warning.text = (
+                    f"HEAD actual: {revision}. El manifiesto registra {recorded_revision}; "
+                    "la conversión no permite sustituir esa revisión registrada."
+                )
+                ui.notify(
+                    "HEAD difiere de la revisión registrada en el manifiesto",
+                    type="warning",
+                )
+            else:
+                remote_revision_warning.text = f"SHA resuelto: {revision}"
+                ui.notify("Revisión actual resuelta", type="positive")
+        finally:
+            btn_resolve_revision.enable()
+
+    async def on_import_remote():
+        if remote_metadata is None:
+            ui.notify("Inspecciona primero el ZIP", type="warning")
+            return
+        archive_value = (remote_archive_path.value or "").strip()
+        archive_path = Path(archive_value).expanduser()
+        if not archive_value or str(archive_path.resolve()) != remote_inspected_path:
+            ui.notify("Vuelve a inspeccionar el ZIP seleccionado", type="warning")
+            return
+
+        revision = (remote_revision_input.value or "").strip()
+        acknowledged = bool(remote_acknowledge_revision.value)
+        if remote_metadata.recorded_revision is None:
+            if not revision:
+                ui.notify("Indica un SHA de revisión de 40 caracteres", type="warning")
+                return
+            if not acknowledged:
+                ui.notify(
+                    "Debes aceptar explícitamente la revisión no registrada",
+                    type="warning",
+                )
+                return
+        elif revision and revision.lower() != remote_metadata.recorded_revision:
+            ui.notify(
+                "El manifiesto tiene una revisión registrada que no se puede sustituir",
+                type="warning",
+            )
+            return
+        else:
+            revision = remote_metadata.recorded_revision
+
+        output_value = (remote_output_dir.value or "").strip()
+        if not output_value:
+            ui.notify("Indica una carpeta de salida nueva", type="warning")
+            return
+        output_path = Path(output_value).expanduser()
+        if output_path.exists() or output_path.is_symlink():
+            ui.notify("La carpeta de salida ya existe; elige una nueva", type="warning")
+            return
+
+        ollama_model_name = (ollama_name.value or "").strip()
+        context = start_job(
+            _remote_import_worker,
+            str(archive_path),
+            str(output_path),
+            revision or None,
+            acknowledged,
+            quant_select.value,
+            ollama_model_name,
+            bool(register_remote_ollama.value),
+        )
+        if context is None:
+            notify_job_busy()
+            return
+
+        btn_import_remote.disable()
+        remote_import_log.clear()
+        remote_import_log.push(
+            f"Importación iniciada para {remote_metadata.model_id}; "
+            "no se ejecutará entrenamiento."
+        )
+        try:
+            while True:
+                msg = await next_message(context)
+                if msg["type"] == "remote_started":
+                    remote_import_log.push(
+                        "Convirtiendo el adaptador a GGUF; puede tardar varios minutos."
+                    )
+                elif msg["type"] == "remote_imported":
+                    result = msg["result"]
+                    remote_import_log.push("Importación completada.")
+                    remote_import_log.push(f"Modelo: {result.model_id}")
+                    remote_import_log.push(f"Revisión: {result.model_revision}")
+                    remote_import_log.push(f"Salida: {result.output_dir}")
+                    for gguf_path in result.gguf_files:
+                        remote_import_log.push(f"GGUF: {gguf_path}")
+                    remote_import_log.push(f"Modelfile: {result.modelfile_path}")
+                    if result.ollama_model_name:
+                        remote_import_log.push(
+                            f"Registrado en Ollama como: {result.ollama_model_name}"
+                        )
+                    else:
+                        remote_import_log.push("Registro en Ollama omitido.")
+                    ui.notify("Importación del ZIP completada", type="positive")
+                    break
+                elif msg["type"] == "error":
+                    remote_import_log.push(f"Error: {msg['msg']}")
+                    ui.notify("Error durante la importación", type="negative")
+                    break
+        finally:
+            btn_import_remote.enable()
+
     async def on_export():
         pipeline = get_pipeline()
         if pipeline.model is None:
@@ -467,12 +851,100 @@ async def main():
         finally:
             btn_export.enable()
 
+    async def on_kaggle_submit():
+        kind = kaggle_dataset_kind.value
+        if kind == "local":
+            dataset = KaggleDataset(
+                kind="local",
+                value=(kaggle_local_dataset.value or "").strip(),
+                upload_consent=bool(kaggle_upload_consent.value),
+            )
+        elif kind == "huggingface":
+            dataset = KaggleDataset(
+                kind="huggingface",
+                value=(kaggle_hf_dataset.value or "").strip(),
+                revision=(kaggle_hf_revision.value or "").strip(),
+            )
+        else:
+            dataset = KaggleDataset(
+                kind="kaggle",
+                value=(kaggle_dataset_ref.value or "").strip(),
+            )
+
+        kaggle_submit_button.disable()
+        kaggle_result.value = "Preparando y enviando el trabajo…"
+        try:
+            result = await asyncio.to_thread(
+                KaggleRunner().submit,
+                kernel_id=(kaggle_kernel_id.value or "").strip(),
+                model=resolve_model(),
+                model_revision=(kaggle_model_revision.value or "").strip() or None,
+                dataset=dataset,
+                epochs=int(epochs_input.value or 1),
+                batch_size=int(batch_input.value or 1),
+                learning_rate=float(lr_select.value or 2e-4),
+            )
+            kaggle_kernel_id.value = result.kernel_id
+            if dataset.kind == "local":
+                source_summary = f"Dataset local privado subido: {result.dataset_id}"
+            elif dataset.kind == "kaggle":
+                source_summary = f"Dataset Kaggle asociado: {result.dataset_id}"
+            else:
+                source_summary = f"Dataset HF fijado: {dataset.value}@{dataset.revision}"
+            kaggle_result.value = (
+                f"Enviado: {result.kernel_id}\n"
+                f"{source_summary}\n"
+                "Kaggle iniciará la ejecución. Usa «Consultar estado» para seguirla."
+            )
+        except KaggleError as error:
+            kaggle_result.value = f"Error: {error}"
+            ui.notify("No se pudo enviar el trabajo a Kaggle", type="negative")
+        finally:
+            kaggle_submit_button.enable()
+
+    async def on_kaggle_status():
+        kernel_id = (kaggle_kernel_id.value or "").strip()
+        kaggle_status_button.disable()
+        try:
+            kaggle_result.value = await asyncio.to_thread(
+                KaggleRunner().status, kernel_id
+            )
+        except KaggleError as error:
+            kaggle_result.value = f"Error: {error}"
+            ui.notify("No se pudo consultar Kaggle", type="negative")
+        finally:
+            kaggle_status_button.enable()
+
+    async def on_kaggle_download():
+        kernel_id = (kaggle_kernel_id.value or "").strip()
+        destination = os.path.join(
+            os.path.expanduser("~/kaggle_output"), kernel_id.rsplit("/", 1)[-1]
+        )
+        kaggle_download_button.disable()
+        try:
+            downloaded_to = await asyncio.to_thread(
+                KaggleRunner().download_output, kernel_id, destination
+            )
+            kaggle_result.value = f"Artefactos descargados en: {downloaded_to}"
+            ui.notify("Descarga de artefactos completada", type="positive")
+        except KaggleError as error:
+            kaggle_result.value = f"Error: {error}"
+            ui.notify("No se pudieron descargar los artefactos", type="negative")
+        finally:
+            kaggle_download_button.enable()
+
     # ---------- Cableado de eventos ----------
     btn_load.on_click(on_load)
     btn_train.on_click(on_train)
     btn_stop.on_click(on_stop)
     btn_eval.on_click(on_eval)
     btn_export.on_click(on_export)
+    btn_inspect_remote.on_click(on_inspect_remote)
+    btn_resolve_revision.on_click(on_resolve_remote_revision)
+    btn_import_remote.on_click(on_import_remote)
+    kaggle_submit_button.on_click(on_kaggle_submit)
+    kaggle_status_button.on_click(on_kaggle_status)
+    kaggle_download_button.on_click(on_kaggle_download)
 
 if __name__ == "__main__":
     ui.run(title="SLM Fine-Tuner", port=8080, native=False, reload=False)

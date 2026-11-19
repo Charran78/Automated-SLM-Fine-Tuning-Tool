@@ -65,6 +65,7 @@ Diseñado para funcionar tanto en **GPU** (con Unsloth, ruta acelerada) como en 
 - ✅ **Generación automática del `Modelfile`** con parche contra el bug conocido de Unsloth ([issue #2604](https://github.com/unslothai/unsloth/issues/2604)).
 - ✅ **Registro automático en Ollama** con un solo comando.
 - ✅ **Limpieza automática** de archivos temporales pesados.
+- 🧪 **Ejecución remota experimental con Kaggle CLI**; pendiente de validar con una cuenta Kaggle real. El flujo local sigue independiente.
 
 ---
 
@@ -138,6 +139,19 @@ El proyecto es un prototipo funcional en evolución. La interfaz activa es `app_
 
 **Criterio de cierre:** una persona nueva puede instalar, ejecutar un ejemplo, encontrar los resultados y entender las limitaciones sin depender de instrucciones externas.
 
+#### Fase 6 — Validar entrenamiento remoto opcional en Kaggle
+
+**Estado:** prueba de humo real completada en Kaggle; la integración sigue experimental mientras no se validen todas las fuentes y modelos admitidos.
+
+- [x] Añadir un backend opcional basado en el CLI oficial, sin cambiar el flujo local.
+- [x] Admitir archivos locales con consentimiento explícito y dataset privado, referencias Kaggle y datasets públicos de Hugging Face fijados por revisión.
+- [x] Generar un manifiesto con configuración, revisiones, métricas y entorno detectado.
+- [x] Ejecutar un trabajo real con GPU T4 y validar autenticación, dependencias, conectividad y descarga del adaptador.
+- [ ] Probar datasets JSON/JSONL con `messages` y `text` en los tres orígenes.
+- [ ] Validar que el dataset cargado y el modelo indicado son compatibles antes de consumir cuota.
+
+**Criterio de cierre:** una persona puede enviar un trabajo, entender su estado, recuperar el adaptador y repetir la evaluación; privacidad, cuotas y dependencias están validadas en Kaggle.
+
 ### Verificación local actual
 
 Desde la raíz del proyecto:
@@ -162,6 +176,8 @@ Estas comprobaciones validan pruebas, sintaxis y lint; **no sustituyen** una eje
 | GPU NVIDIA (opcional) | 6–8 GB VRAM | Recomendado para la ruta Unsloth |
 | Git | cualquiera | Solo para la ruta CPU (clonar `llama.cpp`) |
 | CMake | 3.20+ | Solo para la ruta CPU (compilar `llama-quantize`) |
+| SentencePiece | 0.1.98 – 0.2.x | Requerido al convertir modelos Hugging Face a GGUF |
+| Kaggle CLI (opcional) | CLI oficial actual | Solo para enviar entrenamientos remotos |
 
 ---
 
@@ -194,14 +210,10 @@ Deberías ver (venv) al principio del prompt.
 
 ```
 ### 3. Dependencias base
-Con el entorno virtual activado:
+Con el entorno virtual activado, instala las dependencias declaradas. Esto incluye Kaggle CLI para quien quiera usar el entrenamiento remoto; el flujo local no necesita autenticarse ni conectarse a Kaggle.
 
 ```bash
-pip install -r requirements.txt
-Si aún no tienes el requirements.txt, puedes instalarlas directamente:
-```
-```bash
-pip install nicegui torch transformers datasets "trl>=1.18.0" peft accelerate numpy
+python -m pip install -r requirements.txt
 ```
 ### 4. Unsloth (opcional, solo GPU NVIDIA)
 
@@ -232,6 +244,23 @@ Git: git-scm.com
 
 CMake: cmake.org
 ```
+
+### 7. Kaggle CLI (opcional)
+
+Kaggle CLI está incluido y fijado en `requirements.txt` (`kaggle==2.2.5`; `six==1.17.0`). Si ya habías creado el entorno antes de añadir estas dependencias, actualízalo con:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+En el primer uso del entrenamiento remoto, autentícate mediante OAuth:
+
+```bash
+kaggle auth login
+```
+
+El comando abre el navegador y guarda la sesión en el perfil local del usuario. La versión documentada usa OAuth; tener un `kaggle.json` antiguo por sí solo no sustituye este inicio de sesión. No copies claves ni tokens al repositorio, a los archivos del trabajo ni a la interfaz.
+
 ## 📁 Formato del dataset
 El dataset debe ser un archivo JSONL (o cargable desde Hugging Face) con una columna messages en formato de conversación:
 
@@ -258,6 +287,43 @@ python app_ui3.py
 ```
 
 La interfaz local queda disponible en `http://localhost:8080`.
+
+### Entrenamiento remoto opcional con Kaggle
+
+1. Instala las dependencias y completa `kaggle auth login` desde el mismo entorno Python que ejecuta la aplicación.
+2. Inicia la aplicación con `python app_ui3.py` y abre la pestaña **Kaggle (opcional)**.
+3. Indica el ID del notebook con formato `usuario/slug`, el modelo base y, opcionalmente, el SHA de revisión del modelo.
+4. Selecciona una fuente de dataset y completa sus campos:
+
+   - **Referencia Kaggle:** enlaza un dataset existente (`usuario/slug`) como entrada.
+   - **Hugging Face público:** indica el ID del dataset y su SHA de commit de 40 caracteres; el notebook solicita esa revisión exacta en runtime. También puedes fijar opcionalmente el SHA del modelo; si lo dejas vacío, el manifiesto registra el commit que Hugging Face resolvió.
+   - **Archivo local:** indica un JSON/JSONL y marca la casilla de consentimiento. El archivo se sube como dataset Kaggle privado (no se pasa la opción `--public`) y se adjunta al notebook privado.
+
+5. Pulsa **Enviar** para crear o actualizar el notebook y arrancar el trabajo; consume cuota de Kaggle. Después usa **Consultar estado** y **Descargar artefactos** para recuperar `model_artifact.zip` en `~/kaggle_output/<slug>/`, fuera del repositorio.
+
+El entrenamiento remoto usa QLoRA 4-bit, separa una partición de evaluación cuando hay más de 10 ejemplos y compara `eval_loss` antes y después. El notebook fija las versiones de entrenamiento que pasaron la prueba real y resuelve el SHA completo del modelo antes de descargar tokenizer y pesos. El ZIP incluye el adaptador LoRA y un `manifest.json` con revisiones, hashes del dataset, configuración, métricas, versiones del entorno y hardware detectado. El kernel se configura privado y con GPU; no se suben credenciales locales.
+
+**Privacidad y costes:** al consentir, el archivo local se copia a Kaggle y queda sujeto a las condiciones de almacenamiento, retención y controles de acceso de Kaggle; confirma que tienes derecho a transferirlo y que su contenido no incluye información sensible que no debas compartir con ese proveedor. Los kernels y datasets se crean privados, pero el propietario de la cuenta y Kaggle siguen teniendo acceso. Kaggle impone límites de GPU, tiempo y almacenamiento que dependen de la cuenta y pueden cambiar; consulta las cuotas de tu cuenta antes de enviar trabajos.
+
+**Conectividad remota:** el notebook declara `enable_internet: true`, necesario para descargar modelos y datasets públicos de Hugging Face. Aunque el metadata oficial documenta esta opción, hay reportes de que Kaggle puede ignorarla en ejecuciones enviadas por API. Si la instancia la ignora, la descarga remota fallará; confirma que internet está habilitado para el notebook en Kaggle. El entrenamiento local no requiere Kaggle ni se ve afectado por esta limitación.
+
+**Estado de validación:** se completó una ejecución real con Kaggle CLI y GPU T4. La prueba de humo usó `Qwen/Qwen2.5-0.5B-Instruct`, 12 conversaciones sintéticas (10 entrenamiento y 2 evaluación) y generó un adaptador PEFT descargable. `eval_loss` bajó de 4.5125 a 3.4282, pero dos ejemplos de evaluación no permiten afirmar una mejora general. Las versiones del stack se fijaron a las observadas en esa ejecución; Kaggle sigue controlando la imagen base y la disponibilidad de GPU, por lo que no se garantiza disponibilidad ni reproducibilidad bit a bit.
+
+### Convertir un adaptador Kaggle a GGUF y Ollama
+
+La pestaña **Exportación** conserva la exportación del entrenamiento local y añade un flujo separado para importar `model_artifact.zip`. El ZIP es la fuente original: se valida y se lee, pero no se extrae ni se sobrescribe en su ubicación. La conversión genera el modelo fusionado, GGUF y `conversion_manifest.json` en una carpeta nueva junto al ZIP.
+
+1. Indica la ruta local al `model_artifact.zip` descargado desde Kaggle. La aplicación sugiere el más reciente bajo `~/kaggle_output/`.
+2. Pulsa **Inspeccionar ZIP**. Se comprueban CRC, estructura PEFT, archivos del tokenizer, correspondencia entre el modelo del manifiesto y el del adaptador, rutas seguras y SHA-256 del ZIP.
+3. Usa la revisión inmutable registrada en el manifiesto. Si falta, la UI lo advierte; puedes resolver el HEAD actual de Hugging Face, pero debes aceptar explícitamente que no se sabe si esa fue la revisión usada durante el entrenamiento. El artefacto de la primera prueba tiene precisamente esa limitación: su `model_resolved_revision` está vacío. No se sustituye una revisión registrada.
+4. Elige cuantización GGUF y una carpeta de salida nueva. La aplicación carga la base fijada en CPU/FP32, aplica y fusiona el adaptador en un pipeline aislado, y convierte con `llama.cpp`. El proceso no reentrena ni modifica el pipeline local activo.
+5. Si Ollama está instalado, deja marcada la opción de registro e indica un nombre que todavía no exista. Después puedes ejecutar `ollama run <nombre>`. Si se desmarca, el GGUF y el `Modelfile` quedan disponibles sin registrar el modelo.
+
+La conversión local necesita descargar la base de Hugging Face y, si no existe ya, clonar/compilar `llama.cpp` con Git y CMake. La fusión en FP32 puede requerir varios GB de RAM y espacio temporal. Si falla el registro en Ollama, los archivos GGUF y `Modelfile` se conservan y la UI muestra sus rutas; los directorios de salida existentes nunca se reutilizan para evitar sobrescrituras.
+
+**Límite de reproducibilidad del artefacto histórico:** el ZIP de la primera ejecución contiene métricas, configuración y versiones, pero no la revisión resuelta de los pesos base ni un SHA-256 del contenido del dataset. Para importarlo hay que elegir y aceptar una revisión SHA explícita; esto permite fijar la conversión, pero no demuestra que sea idéntica a la base usada durante aquel entrenamiento. Las ejecuciones futuras registrarán esos hashes y el inventario de paquetes.
+
+**Validación local (2026-11-19):** se convirtió el adaptador de prueba con la revisión explícita `7ae557604adf67be50417f59c2c2f167def9a775`, `llama.cpp` commit `51a77c4f247ce96fb932e29c9f81625ca9d3b0b7` y cuantización `Q4_K_M`. Ollama registró `qwen2.5:0.5b-kaggle-smoke` y respondió a una inferencia breve. El GGUF resultante mide 397,807,584 bytes. La huella SHA-256 del ZIP original permaneció `e644da81d21918250892e96f6d3200a0d5660211f26f3feb8b4659609582ef0f`; el manifiesto de conversión conserva que la revisión histórica no estaba registrada.
 
 ## CLI
 
@@ -408,25 +474,14 @@ Si tienes GPU, instala Unsloth.
 ```text
 Autonated SLM Fine-Tuning Tool/
 ├── slm_automator.py          # Script principal (clase SLMFineTunerPipeline)
+├── kaggle_runner.py          # Adaptador opcional para Kaggle CLI
 ├── requirements.txt          # Dependencias base
 ├── README.md                 # Este archivo
 ├── mi_dataset.jsonl          # Tu dataset de entrenamiento
 ├── output_model/             # Salida del entrenamiento (checkpoints)
 └── gguf_output/              # GGUF cuantizado + Modelfile
 ```
-📄 requirements.txt recomendado
-```txt
-nicegui>=2.0
-torch>=2.0
-transformers>=4.40
-datasets>=2.18
-trl>=1.18.0
-peft>=0.10
-accelerate>=0.28
-numpy>=1.24
-
-```
-Unsloth no se incluye aquí porque su instalación depende de la plataforma. Consulta la sección Unsloth.
+`requirements.txt` es la lista común de dependencias de la aplicación y fija Kaggle CLI para reproducir la integración remota. Las dependencias de entrenamiento mantienen rangos mínimos porque PyTorch y algunas rutas de aceleración varían según sistema operativo y hardware. Unsloth no se incluye porque su instalación depende de la plataforma; consulta su sección.
 
 Para máxima reproducibilidad de tu entorno exacto:
 

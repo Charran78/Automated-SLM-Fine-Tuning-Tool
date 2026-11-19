@@ -16,6 +16,11 @@ trl>=1.18.0
 peft>=0.10
 accelerate>=0.28
 numpy>=1.24
+sentencepiece>=0.1.98,<0.3.0
+
+# CLI de Kaggle para entrenamiento remoto; six es requerido por Kaggle CLI.
+kaggle==2.2.5
+six==1.17.0
 
 # Opcional: solo si tienes GPU NVIDIA compatible
 # unsloth
